@@ -866,6 +866,93 @@ body:not(.is-muted) .ic-muted{display:none}
 @media (prefers-reduced-motion:reduce){
   .lyrics__line{opacity:1;transform:none}
 }
+
+/* =========================================================================
+   13. 手機端精修（安全區 / 觸控目標 / 首屏節奏 / 膠囊播放器）
+   ========================================================================= */
+:root{
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+@media (max-width:960px){
+  /* 瀏海與底部橫條：導航讓出安全區，避免文字壓到狀態欄 */
+  .nav{
+    height:calc(var(--nav-h) + var(--safe-t));
+    padding-top:var(--safe-t);
+  }
+  .nav.is-floating{
+    height:64px;
+    top:calc(12px + var(--safe-t));
+    padding-top:0;
+  }
+  .hero{
+    padding-top:calc(var(--nav-h) + var(--safe-t) + 34px);
+    padding-bottom:calc(116px + var(--safe-b));
+  }
+  .hero__brandmark{top:calc(var(--nav-h) + var(--safe-t) + 12px)}
+  .hero__haymusic{top:calc(var(--nav-h) + var(--safe-t) + 16px)}
+  .hero__content{padding-top:clamp(8px,3vw,34px)}
+  .hero__disc{
+    width:clamp(232px,60vw,420px);
+    margin:clamp(18px,4.6vw,42px) auto 0;
+  }
+  /* 語言切換：三語按鈕點按高度提升到 44px */
+  #langSegmented .segmented__btn{
+    min-height:44px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+  }
+  /* 固定播放器與浮動小膠囊、提示條避開底部橫條 */
+  .player{bottom:calc(10px + var(--safe-b))}
+  .player-mini{bottom:calc(12px + var(--safe-b))}
+  .toast{bottom:calc(120px + var(--safe-b))}
+  .footer{padding-bottom:calc(130px + var(--safe-b))}
+}
+@media (max-width:760px){
+  .hero__content{gap:clamp(10px,2.4vw,16px)}
+  .hero__eyebrow{font-size:11px;letter-spacing:.16em;gap:10px;flex-wrap:nowrap}
+  .hero__eyebrow::before{width:24px}
+  .hero__title{line-height:1.05}
+  .hero__title.is-en{font-size:clamp(1.85rem,8.6vw,2.9rem)}
+  .hero__meta{font-size:13px;line-height:1.5;gap:6px 9px}
+  .hero__actions{gap:12px}
+  .hero__actions .btn-text{min-height:44px;display:inline-flex;align-items:center}
+  /* 文字按鈕與歌詞分頁：點按高度統一 44px */
+  .btn-text{min-height:44px;display:inline-flex;align-items:center}
+  #lyricSegmented .segmented__btn{min-height:44px;min-width:58px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center}
+  /* 膠囊播放器：封面加大、時間行收緊 */
+  .player{row-gap:6px;padding:10px 14px}
+  .player__cover{width:46px;height:46px}
+  .player__timeline{gap:8px}
+  .player__time{font-size:10.5px}
+  .footer__mails a{min-height:44px;display:inline-flex;align-items:center}
+}
+@media (max-width:560px){
+  .nav{gap:8px}
+  #langSegmented .segmented__btn{min-height:44px;padding:0 8px;font-size:10.5px}
+}
+/* 超窄屏（320~380px）：收窄導航與語言切換，避免貼邊或內部溢出 */
+@media (max-width:380px){
+  .nav{padding-left:12px;padding-right:12px;gap:6px}
+  #langSegmented{min-width:0}
+  #langSegmented .segmented__btn{padding:0 8px;font-size:10px;letter-spacing:.01em}
+  /* 裝飾光暈在超窄屏會撐出橫向滾動，就地裁切 */
+  .hero{overflow-x:clip}
+  /* 60 根聲波柱在 320px 寬會撐破卡片，收窄柱間距與最小寬度 */
+  .wave{gap:2px;overflow:hidden}
+  .wave span{min-width:1px}
+}
+/* 矮屏手機（如 640~720px 高）：縮小黑膠、壓縮首屏，避免首屏按鈕被播放器擠掉 */
+@media (max-width:960px) and (max-height:720px){
+  .hero__disc{width:clamp(188px,46vw,240px);margin-top:12px}
+  .hero__content{padding-top:10px}
+  .hero{padding-bottom:calc(104px + var(--safe-b))}
+}
+/* 高屏手機：首屏內容垂直居中，避免底部大片留白 */
+@media (max-width:960px) and (min-height:800px){
+  .hero{justify-content:center}
+}
 </style>
 </head>
 <body data-playing="false">
@@ -1333,6 +1420,7 @@ body:not(.is-muted) .ic-muted{display:none}
     brand: 'HayMusic',
     cover: 'cover.png',
     audio: 'song.mp3',
+    durationFallback: '3:39',                // metadata 讀不到時的兜底時長
     releaseDate: '2026-10-17',               // 發行日期：2026 年 10 月 17 日
     catalog: 'HM-2026-001',                  // 版權編號（佔位）
     languageLabel: { zhHans: '國語', zhHant: '國語', en: 'Mandarin' },
@@ -1935,11 +2023,21 @@ body:not(.is-muted) .ic-muted{display:none}
       syncPlayLabels();
     });
     audio.addEventListener('error', () => {
-      $$('.song-duration').forEach((el) => { el.textContent = '--:--'; });
-      if (timeTotal) timeTotal.textContent = '--:--';
+      const fb = SONG.durationFallback;
+      $$('.song-duration').forEach((el) => { el.textContent = fb; });
+      if (timeTotal) timeTotal.textContent = fb;
       toast(t('toast.error'));
     });
     audio.addEventListener('volumechange', syncMute);
+
+    // 移動端部分瀏覽器（尤其 App 內置預覽）不會觸發 loadedmetadata，
+    // 2.5s 後仍無時長則回退到配置值，避免首屏長期顯示 "--:--"
+    setTimeout(() => {
+      if (duration) return;
+      const fb = SONG.durationFallback;
+      $$('.song-duration').forEach((el) => { el.textContent = fb; });
+      if (timeTotal) timeTotal.textContent = fb;
+    }, 2500);
   }
 
   // 進度條：input 即時預覽、change 才真正 seek；懸停顯示時間氣泡
@@ -2146,7 +2244,8 @@ body:not(.is-muted) .ic-muted{display:none}
   if (audio) audio.src = SONG.audio;
 
   $$('[data-year]').forEach((el) => { el.textContent = String(new Date().getFullYear()); });
-  if (timeTotal) timeTotal.textContent = '--:--';
+  $$('.song-duration').forEach((el) => { el.textContent = SONG.durationFallback; });
+  if (timeTotal) timeTotal.textContent = SONG.durationFallback;
 
   renderLyrics();
 
